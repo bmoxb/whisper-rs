@@ -1,6 +1,8 @@
 mod language;
+mod model;
 
 pub use language::Language;
+pub use model::*;
 
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
