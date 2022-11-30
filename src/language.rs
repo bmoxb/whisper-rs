@@ -1,4 +1,4 @@
-#[derive(strum_macros::Display, Debug)]
+#[derive(Clone, Copy, strum_macros::Display, Debug)]
 #[strum(serialize_all = "lowercase")]
 pub enum Language {
     English,
