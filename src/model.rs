@@ -1,4 +1,5 @@
 use std::convert::{AsRef, TryFrom};
+use std::fmt;
 use std::path::Path;
 
 use crate::Language;
@@ -11,15 +12,38 @@ pub struct Model {
 }
 
 impl Model {
-    pub fn load(size: ModelSize) -> Result<Self, PyErr> {
+    pub fn new(
+        size: ModelSize,
+        specific_device: Option<Device>,
+        download_path: Option<&Path>,
+        in_memory: bool,
+    ) -> Result<Self, PyErr> {
         Python::with_gil(|py| {
             let whisper = PyModule::import(py, "whisper")?;
 
+            let kwargs = PyDict::new(py);
+            if let Some(device) = specific_device {
+                kwargs.set_item("device", device.to_string())?;
+            }
+            if let Some(path) = download_path {
+                let path = path.canonicalize().unwrap();
+                kwargs.set_item("download_root", path.display().to_string())?;
+            }
+            kwargs.set_item("in_memory", in_memory)?;
+
             whisper
                 .getattr("load_model")?
-                .call1((size.to_string(),))
+                .call((size.to_string(),), Some(kwargs))
                 .map(|m| Model { model: m.into() })
         })
+    }
+
+    pub fn from_size(size: ModelSize) -> Result<Self, PyErr> {
+        Model::new(size, None, None, false)
+    }
+
+    pub fn default() -> Result<Self, PyErr> {
+        Model::from_size(ModelSize::default())
     }
 
     pub fn transcribe(
@@ -44,16 +68,6 @@ impl Model {
             dict.try_into()
         })
     }
-}
-
-#[derive(Clone, Copy, strum_macros::Display, Debug)]
-#[strum(serialize_all = "lowercase")]
-pub enum ModelSize {
-    Tiny,
-    Base,
-    Small,
-    Medium,
-    Large,
 }
 
 #[derive(Clone, Debug)]
@@ -103,4 +117,55 @@ pub struct Segment {
     pub text: String,
     pub start: f32,
     pub end: f32,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum ModelSize {
+    Tiny,
+    TinyEnglishOnly,
+    Base,
+    BaseEnglishOnly,
+    Small,
+    SmallEnglishOnly,
+    Medium,
+    MediumEnglishOnly,
+    Large,
+}
+
+impl Default for ModelSize {
+    fn default() -> Self {
+        ModelSize::Small
+    }
+}
+
+impl fmt::Display for ModelSize {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            ModelSize::Tiny => write!(f, "tiny"),
+            ModelSize::TinyEnglishOnly => write!(f, "tiny.en"),
+            ModelSize::Base => write!(f, "base"),
+            ModelSize::BaseEnglishOnly => write!(f, "base.en"),
+            ModelSize::Small => write!(f, "small"),
+            ModelSize::SmallEnglishOnly => write!(f, "small.en"),
+            ModelSize::Medium => write!(f, "medium"),
+            ModelSize::MediumEnglishOnly => write!(f, "medium.en"),
+            ModelSize::Large => write!(f, "large"),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum Device {
+    Cpu,
+    Cuda(Option<usize>),
+}
+
+impl fmt::Display for Device {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Device::Cpu => write!(f, "cpu"),
+            Device::Cuda(None) => write!(f, "cuda"),
+            Device::Cuda(Some(index)) => write!(f, "cuda:{}", index),
+        }
+    }
 }
