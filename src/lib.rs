@@ -1,3 +1,7 @@
+mod language;
+
+pub use language::Language;
+
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 
@@ -13,7 +17,9 @@ fn testing123() -> PyResult<String> {
 
         let args = ("base",);
         let model = whisper.getattr("load_model")?.call1(args)?;
-        let result: &PyDict = model.call_method1("transcribe", ("audio.mp3",))?.downcast()?;
+        let result: &PyDict = model
+            .call_method1("transcribe", ("audio.mp3",))?
+            .downcast()?;
 
         result.get_item("text").unwrap().extract()
     })
@@ -25,6 +31,6 @@ mod tests {
 
     #[test]
     fn my_test() {
-    assert_eq!(testing123().unwrap(), " Hello world.");
+        assert_eq!(testing123().unwrap(), " Hello world.");
     }
 }
