@@ -2,7 +2,7 @@ use std::convert::{AsRef, TryFrom};
 use std::fmt;
 use std::path::Path;
 
-use crate::Language;
+use crate::{Error, Language, Result};
 
 use numpy::convert::IntoPyArray;
 use pyo3::prelude::*;
@@ -18,7 +18,7 @@ impl Model {
         specific_device: Option<Device>,
         download_path: Option<&Path>,
         in_memory: bool,
-    ) -> Result<Self, PyErr> {
+    ) -> Result<Self> {
         Python::with_gil(|py| {
             let whisper = PyModule::import(py, "whisper")?;
 
@@ -27,7 +27,7 @@ impl Model {
                 kwargs.set_item("device", device.to_string())?;
             }
             if let Some(path) = download_path {
-                let path = path.canonicalize().unwrap();
+                let path = path.canonicalize()?;
                 kwargs.set_item("download_root", path.display().to_string())?;
             }
             kwargs.set_item("in_memory", in_memory)?;
@@ -36,14 +36,15 @@ impl Model {
                 .getattr("load_model")?
                 .call((size.to_string(),), Some(kwargs))
                 .map(|m| Model { model: m.into() })
+                .map_err(Into::into)
         })
     }
 
-    pub fn from_size(size: ModelSize) -> Result<Self, PyErr> {
+    pub fn from_size(size: ModelSize) -> Result<Self> {
         Model::new(size, None, None, false)
     }
 
-    pub fn default() -> Result<Self, PyErr> {
+    pub fn default() -> Result<Self> {
         Model::from_size(ModelSize::default())
     }
 
@@ -51,8 +52,8 @@ impl Model {
         &self,
         path: impl AsRef<Path>,
         language: Option<Language>,
-    ) -> Result<Transcription, PyErr> {
-        let full_path_string = path.as_ref().canonicalize().unwrap().display().to_string();
+    ) -> Result<Transcription> {
+        let full_path_string = path.as_ref().canonicalize()?.display().to_string();
         Python::with_gil(|py| self.transcribe(py, (full_path_string,), language))
     }
 
@@ -60,7 +61,7 @@ impl Model {
         &self,
         audio: Vec<f32>,
         language: Option<Language>,
-    ) -> Result<Transcription, PyErr> {
+    ) -> Result<Transcription> {
         Python::with_gil(|py| {
             let array = audio.into_pyarray(py);
             self.transcribe(py, (array,), language)
@@ -72,7 +73,7 @@ impl Model {
         py: Python<'_>,
         args: impl IntoPy<Py<PyTuple>>,
         language: Option<Language>,
-    ) -> Result<Transcription, PyErr> {
+    ) -> Result<Transcription> {
         let model = self.model.as_ref(py);
 
         let kwargs = PyDict::new(py);
@@ -82,7 +83,8 @@ impl Model {
 
         let dict: &PyDict = model
             .call_method("transcribe", args, Some(kwargs))?
-            .downcast()?;
+            .downcast()
+            .map_err(PyErr::from)?;
 
         dict.try_into()
     }
@@ -96,31 +98,43 @@ pub struct Transcription {
 }
 
 impl TryFrom<&PyDict> for Transcription {
-    type Error = PyErr;
+    type Error = Error;
 
-    fn try_from(dict: &PyDict) -> Result<Self, Self::Error> {
-        let text = dict.get_item("text").unwrap().extract()?;
+    fn try_from(dict: &PyDict) -> Result<Self> {
+        let text = dict
+            .get_item("text")
+            .ok_or(Error::MissingResult("text"))?
+            .extract()?;
 
         let segments = dict
             .get_item("segments")
-            .unwrap()
+            .ok_or(Error::MissingResult("segments"))?
             .iter()?
             .map(|s| {
-                let dict: &PyDict = s?.downcast()?;
+                let dict: &PyDict = s?.downcast().map_err(PyErr::from)?;
+
                 Ok(Segment {
-                    text: dict.get_item("text").unwrap().extract()?,
-                    start: dict.get_item("start").unwrap().extract()?,
-                    end: dict.get_item("end").unwrap().extract()?,
+                    text: dict
+                        .get_item("text")
+                        .ok_or(Error::MissingResult("segment text"))?
+                        .extract()?,
+                    start: dict
+                        .get_item("start")
+                        .ok_or(Error::MissingResult("segment start"))?
+                        .extract()?,
+                    end: dict
+                        .get_item("end")
+                        .ok_or(Error::MissingResult("segment end"))?
+                        .extract()?,
                 })
             })
-            .collect::<Result<Vec<Segment>, PyErr>>()?;
+            .collect::<Result<Vec<Segment>>>()?;
 
         let language = dict
             .get_item("language")
-            .unwrap()
+            .ok_or(Error::MissingResult("language"))?
             .extract::<&str>()?
-            .try_into()
-            .unwrap();
+            .try_into()?;
 
         Ok(Transcription {
             text,

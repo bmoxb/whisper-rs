@@ -1,3 +1,5 @@
+use crate::Error;
+
 #[derive(Clone, Copy, strum_macros::Display, Debug)]
 #[strum(serialize_all = "lowercase")]
 pub enum Language {
@@ -104,7 +106,7 @@ pub enum Language {
 }
 
 impl TryFrom<&str> for Language {
-    type Error = ();
+    type Error = Error;
 
     fn try_from(s: &str) -> Result<Self, Self::Error> {
         match s.to_lowercase().trim() {
@@ -207,7 +209,7 @@ impl TryFrom<&str> for Language {
             "ba" | "bashkir" => Ok(Language::Bashkir),
             "jw" | "javanese" => Ok(Language::Javanese),
             "su" | "sundanese" => Ok(Language::Sundanese),
-            _ => Err(()),
+            _ => Err(Error::InvalidLanguageString(s.to_string())),
         }
     }
 }

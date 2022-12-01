@@ -1,6 +1,8 @@
+mod error;
 mod language;
 mod model;
 
+pub use error::*;
 pub use language::Language;
 pub use model::*;
 
