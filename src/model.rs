@@ -4,6 +4,7 @@ use std::path::Path;
 
 use crate::Language;
 
+use numpy::convert::IntoPyArray;
 use pyo3::prelude::*;
 use pyo3::types::*;
 
@@ -46,27 +47,44 @@ impl Model {
         Model::from_size(ModelSize::default())
     }
 
-    pub fn transcribe(
+    pub fn transcribe_file(
         &self,
         path: impl AsRef<Path>,
         language: Option<Language>,
     ) -> Result<Transcription, PyErr> {
         let full_path_string = path.as_ref().canonicalize().unwrap().display().to_string();
+        Python::with_gil(|py| self.transcribe(py, (full_path_string,), language))
+    }
 
+    pub fn transcribe_audio(
+        &self,
+        audio: Vec<f32>,
+        language: Option<Language>,
+    ) -> Result<Transcription, PyErr> {
         Python::with_gil(|py| {
-            let model = self.model.as_ref(py);
-
-            let kwargs = PyDict::new(py);
-            if let Some(language) = language {
-                kwargs.set_item("language", language.to_string())?;
-            }
-
-            let dict: &PyDict = model
-                .call_method("transcribe", (full_path_string,), Some(kwargs))?
-                .downcast()?;
-
-            dict.try_into()
+            let array = audio.into_pyarray(py);
+            self.transcribe(py, (array,), language)
         })
+    }
+
+    fn transcribe(
+        &self,
+        py: Python<'_>,
+        args: impl IntoPy<Py<PyTuple>>,
+        language: Option<Language>,
+    ) -> Result<Transcription, PyErr> {
+        let model = self.model.as_ref(py);
+
+        let kwargs = PyDict::new(py);
+        if let Some(language) = language {
+            kwargs.set_item("language", language.to_string())?;
+        }
+
+        let dict: &PyDict = model
+            .call_method("transcribe", args, Some(kwargs))?
+            .downcast()?;
+
+        dict.try_into()
     }
 }
 

@@ -12,9 +12,9 @@ mod tests {
     fn my_test() {
         println!(
             "{:?}",
-            Model::new(ModelSize::Base, Some(Device::Cuda(None)), None, true)
+            Model::new(ModelSize::Base, Some(Device::Cpu), None, true)
                 .unwrap()
-                .transcribe("br2049.mp3", None)
+                .transcribe_audio(x, None)
                 .unwrap()
         );
     }
